@@ -1,0 +1,59 @@
+# =====================================================================
+# WEATHER SENSORS based on your two weather entities:
+#   weather.forecast_home  (Met.no)       -> forecasted max temp + wind
+#   weather.buienradar     (Buienradar)   -> rain forecast (next hour)
+#
+# These use `weather.get_forecasts`, an action that retrieves your forecast
+# data (not just an attribute) — hence a trigger-based template-sensor
+# instead of a regular template-sensor.
+#
+# Same note as in 02_templates.yaml: merge the `template:` list with your
+# other template-config, don't repeat the key.
+# =====================================================================
+
+# Trigger-based template sensor: the action's response_variable is
+# available directly in the state templates of the sensors defined
+# right below it, within this same `template:` list item.
+template:
+  - trigger:
+      - trigger: time_pattern
+        minutes: "/30"
+      - trigger: homeassistant
+        event: start
+    action:
+      - action: weather.get_forecasts
+        target:
+          entity_id: weather.forecast_home
+        data:
+          type: daily
+        response_variable: forecast_daily
+    sensor:
+      - name: "Forecast max temperature"
+        unique_id: forecast_max_temperature
+        unit_of_measurement: "°C"
+        device_class: temperature
+        state: >
+          {{ forecast_daily['weather.forecast_home']['forecast'][0]['temperature'] | round(1) }}
+
+      - name: "Wind speed forecast"
+        unique_id: wind_speed_forecast
+        unit_of_measurement: "km/h"
+        device_class: wind_speed
+        state: >
+          {{ forecast_daily['weather.forecast_home']['forecast'][0]['wind_speed'] | round(1) }}
+
+  - binary_sensor:
+      - name: "Rain threatens"
+        unique_id: rain_threatens
+        device_class: moisture
+        state: >
+          {% set current_conditions = states('weather.buienradar') %}
+          {% set rain_conditions = ['rainy', 'pouring', 'lightning-rainy', 'lightning'] %}
+          {{ current_conditions in rain_conditions }}
+
+# -----------------------------------------------------------------------
+# After restart, verify in Developer Tools > States if the forecast-
+# structure is correct (keys may vary slightly per HA version):
+# Developer Tools > Actions > run weather.get_forecasts on
+# weather.forecast_home / weather.buienradar and inspect the response.
+# -----------------------------------------------------------------------
