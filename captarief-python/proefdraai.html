@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Proefdraai — capbudget</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500&display=swap');
+
+:root{
+  --zink:#dce0e4;
+  --paneel:#f3f5f7;
+  --rand:#c3c9d0;
+  --inkt:#12161c;
+  --grijs:#6b7480;
+  --bruin:#8b5a2b;   /* laadvermogen  — bruin = fase, EU-aderkleur */
+  --blauw:#1e5aa8;   /* netafname     — blauw = nul */
+  --olijf:#6f7a00;   /* envelope      — geelgroen = aarde, de veiligheidsader */
+  --alarm:#b3271e;
+  --mono:'IBM Plex Mono',ui-monospace,monospace;
+  --sans:'IBM Plex Sans',system-ui,sans-serif;
+  --display:'Bricolage Grotesque',var(--sans);
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{
+  background:var(--zink);
+  color:var(--inkt);
+  font-family:var(--sans);
+  font-size:15px;
+  line-height:1.45;
+  padding:20px 16px 48px;
+}
+.wrap{max-width:1040px;margin:0 auto}
+
+/* ---- kop ---- */
+.eyebrow{
+  font-family:var(--mono);font-size:11px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--grijs);
+  display:flex;gap:10px;align-items:center;margin-bottom:6px;
+}
+.eyebrow::after{content:"";flex:1;height:1px;background:var(--rand)}
+h1{
+  font-family:var(--display);font-weight:800;
+  font-size:clamp(28px,6vw,46px);line-height:1.02;margin:0 0 4px;
+  letter-spacing:-.02em;
+}
+.lead{color:var(--grijs);max-width:56ch;margin:0 0 22px;font-size:14px}
+
+/* ---- panelen ---- */
+.paneel{
+  background:var(--paneel);border:1px solid var(--rand);
+  border-radius:3px;padding:16px;
+}
+.grid-top{display:grid;grid-template-columns:minmax(0,300px) minmax(0,1fr);gap:14px;margin-bottom:14px}
+@media(max-width:760px){.grid-top{grid-template-columns:1fr}}
+
+.paneel h2{
+  font-family:var(--mono);font-size:10px;letter-spacing:.15em;text-transform:uppercase;
+  color:var(--grijs);margin:0 0 12px;font-weight:600;
+}
+
+/* ---- kwartierklok (signature) ---- */
+.klok{display:flex;flex-direction:column;align-items:center}
+.klok svg{width:100%;max-width:236px;height:auto}
+.klok-legenda{
+  font-family:var(--mono);font-size:11px;color:var(--grijs);
+  margin-top:10px;display:flex;flex-direction:column;gap:3px;width:100%;
+}
+.klok-legenda div{display:flex;justify-content:space-between;gap:10px}
+.klok-legenda b{font-weight:500;color:var(--inkt)}
+
+/* ---- meters ---- */
+.meters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+@media(max-width:460px){.meters{grid-template-columns:1fr}}
+.meter{border-left:3px solid var(--rand);padding-left:11px}
+.meter .label{
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--grijs);
+}
+.meter .waarde{
+  font-family:var(--display);font-weight:600;font-size:30px;
+  line-height:1.1;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+}
+.meter .waarde span{font-size:14px;font-weight:600;color:var(--grijs);margin-left:3px}
+.m-env{border-left-color:var(--olijf)} .m-env .waarde{color:var(--olijf)}
+.m-net{border-left-color:var(--blauw)} .m-net .waarde{color:var(--blauw)}
+.m-ev{border-left-color:var(--bruin)}  .m-ev .waarde{color:var(--bruin)}
+.m-piek{border-left-color:var(--inkt)}
+
+.reden{
+  margin-top:14px;padding:9px 11px;background:#e9ecef;border-radius:2px;
+  font-family:var(--mono);font-size:12px;display:flex;gap:9px;align-items:baseline;
+}
+.reden .punt{width:7px;height:7px;border-radius:50%;background:var(--olijf);flex:0 0 auto;transform:translateY(-1px)}
+.reden.let-op .punt{background:var(--alarm)}
+.reden.let-op{color:var(--alarm)}
+
+.bus{
+  font-family:var(--mono);font-size:10.5px;color:var(--grijs);
+  margin-top:8px;display:flex;justify-content:space-between;
+}
+
+/* ---- grafiek ---- */
+.chart-wrap{margin-bottom:14px}
+.chart-legenda{display:flex;gap:16px;flex-wrap:wrap;font-family:var(--mono);font-size:11px;margin-bottom:8px}
+.chart-legenda i{display:inline-block;width:14px;height:2px;margin-right:6px;vertical-align:middle}
+svg.chart{width:100%;height:190px;display:block}
+
+/* ---- geschiedenis ---- */
+.hist{display:flex;align-items:flex-end;gap:4px;height:78px;margin-top:4px}
+.hist .bar{flex:1;background:var(--blauw);min-height:2px;position:relative;border-radius:1px 1px 0 0}
+.hist .bar.over{background:var(--alarm)}
+.hist-as{font-family:var(--mono);font-size:10px;color:var(--grijs);display:flex;justify-content:space-between;margin-top:5px}
+
+/* ---- bediening ---- */
+.bediening{display:grid;grid-template-columns:repeat(auto-fit,minmax(212px,1fr));gap:18px}
+.veld label{
+  font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--grijs);display:flex;justify-content:space-between;margin-bottom:5px;
+}
+.veld label b{font-weight:600;color:var(--inkt);font-size:11px}
+input[type=range]{width:100%;accent-color:var(--blauw);margin:0}
+.knoppen{display:flex;gap:7px;flex-wrap:wrap;margin-top:4px}
+button{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.04em;
+  background:var(--paneel);border:1px solid var(--rand);color:var(--inkt);
+  padding:7px 11px;border-radius:2px;cursor:pointer;transition:background .12s,border-color .12s;
+}
+button:hover{background:#e6e9ec;border-color:var(--grijs)}
+button:focus-visible{outline:2px solid var(--blauw);outline-offset:2px}
+button.aan{background:var(--inkt);color:var(--paneel);border-color:var(--inkt)}
+button.stoot{border-color:var(--bruin);color:var(--bruin)}
+button.stoot:hover{background:#f0e6da}
+.schakel{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px;margin-top:10px}
+.schakel input{accent-color:var(--blauw);width:15px;height:15px}
+
+.voet{
+  margin-top:20px;font-family:var(--mono);font-size:11px;color:var(--grijs);
+  border-top:1px solid var(--rand);padding-top:12px;max-width:74ch;line-height:1.6;
+}
+.voet b{color:var(--inkt);font-weight:500}
+
+@media(prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="eyebrow"><span>Proefdraai</span><span>capbudget · laag 1</span></div>
+  <h1>Wat doet de regelaar<br>als het huis piekt?</h1>
+  <p class="lead">Dezelfde regelwet als in <code>core.py</code>, in de browser. Draai de belasting op, gooi de oven aan en kijk wat de envelope doet — voordat er iets in je meterkast gebeurt.</p>
+
+  <div class="grid-top">
+    <!-- SIGNATURE: kwartierklok -->
+    <div class="paneel klok">
+      <h2>Kwartierklok</h2>
+      <svg viewBox="0 0 200 200" role="img" aria-label="Verstreken tijd tegenover verbruikt budget in dit kwartier">
+        <circle cx="100" cy="100" r="84" fill="none" stroke="#c3c9d0" stroke-width="9"/>
+        <circle cx="100" cy="100" r="66" fill="none" stroke="#c3c9d0" stroke-width="9"/>
+        <path id="arcTijd" fill="none" stroke="#12161c" stroke-width="9" stroke-linecap="butt"/>
+        <path id="arcBudget" fill="none" stroke="#1e5aa8" stroke-width="9" stroke-linecap="butt"/>
+        <text id="klokGetal" x="100" y="96" text-anchor="middle"
+              style="font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:31px;fill:#12161c">0%</text>
+        <text x="100" y="115" text-anchor="middle"
+              style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.14em;fill:#6b7480">BUDGET OP</text>
+        <text id="klokTijd" x="100" y="133" text-anchor="middle"
+              style="font-family:'IBM Plex Mono',monospace;font-size:11px;fill:#6b7480">900 s resterend</text>
+      </svg>
+      <div class="klok-legenda">
+        <div><span>Buitenring · tijd</span><b id="lgTijd">0%</b></div>
+        <div><span>Binnenring · budget</span><b id="lgBudget">0%</b></div>
+        <div><span>Verbruikt</span><b id="lgWh">0 Wh</b></div>
+      </div>
+    </div>
+
+    <!-- meters -->
+    <div class="paneel">
+      <h2>Nu</h2>
+      <div class="meters">
+        <div class="meter m-env"><div class="label">Envelope</div><div class="waarde" id="mEnv">2350<span>W</span></div></div>
+        <div class="meter m-net"><div class="label">Netafname</div><div class="waarde" id="mNet">0<span>W</span></div></div>
+        <div class="meter m-ev"><div class="label">Laadvermogen</div><div class="waarde" id="mEv">0<span>W</span></div></div>
+        <div class="meter m-piek"><div class="label">Maandpiek</div><div class="waarde" id="mPiek">2,50<span>kW</span></div></div>
+      </div>
+      <div class="reden" id="reden"><span class="punt"></span><span id="redenTekst">vlak op doel</span></div>
+      <div class="bus">
+        <span id="busPub">laatste publicatie: —</span>
+        <span id="busTeller">0 berichten</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- grafiek -->
+  <div class="paneel chart-wrap">
+    <h2>Laatste 15 minuten</h2>
+    <div class="chart-legenda">
+      <span><i style="background:#6f7a00"></i>envelope</span>
+      <span><i style="background:#1e5aa8"></i>netafname</span>
+      <span><i style="background:#8b5a2b"></i>laadvermogen</span>
+      <span><i style="background:#6b7480;height:0;border-top:2px dashed #6b7480"></i>doel</span>
+    </div>
+    <svg class="chart" id="chart" viewBox="0 0 900 190" preserveAspectRatio="none" aria-hidden="true"></svg>
+  </div>
+
+  <!-- geschiedenis -->
+  <div class="paneel chart-wrap">
+    <h2>Afgesloten kwartieren — de maandpiek groeit mee</h2>
+    <div class="hist" id="hist"></div>
+    <div class="hist-as"><span>ouder</span><span id="histInfo">nog geen volledig kwartier</span></div>
+  </div>
+
+  <!-- bediening -->
+  <div class="paneel">
+    <h2>Bediening</h2>
+    <div class="bediening">
+      <div class="veld">
+        <label>Huishouden <b><span id="vHuis">450</span> W</b></label>
+        <input type="range" id="sHuis" min="0" max="4000" step="50" value="450">
+        <div class="knoppen">
+          <button class="stoot" id="bOven">Oven · 2100 W</button>
+          <button class="stoot" id="bKoker">Waterkoker · 1800 W</button>
+          <button class="stoot" id="bZon">Zonnepiek · −2500 W</button>
+        </div>
+      </div>
+      <div class="veld">
+        <label>Maandpiek tot nu <b><span id="vPiek">2,50</span> kW</b></label>
+        <input type="range" id="sPiek" min="2.5" max="9" step="0.1" value="2.5">
+        <label style="margin-top:14px">Marge <b><span id="vMarge">150</span> W</b></label>
+        <input type="range" id="sMarge" min="0" max="500" step="10" value="150">
+      </div>
+      <div class="veld">
+        <label>Vrijgave <b><span id="vVrij">uit</span></b></label>
+        <input type="range" id="sVrij" min="0" max="9200" step="200" value="0">
+        <div class="schakel">
+          <input type="checkbox" id="cAuto" checked>
+          <label for="cAuto" style="margin:0;text-transform:none;letter-spacing:0;font-size:11.5px">Auto aangesloten</label>
+        </div>
+        <div class="schakel" style="margin-top:6px">
+          <input type="checkbox" id="cStoring">
+          <label for="cStoring" style="margin:0;text-transform:none;letter-spacing:0;font-size:11.5px">Sensor uitgevallen</label>
+        </div>
+      </div>
+      <div class="veld">
+        <label>Tempo</label>
+        <div class="knoppen">
+          <button data-tempo="1">1×</button>
+          <button data-tempo="10" class="aan">10×</button>
+          <button data-tempo="60">60×</button>
+        </div>
+        <div class="knoppen" style="margin-top:10px">
+          <button id="bPauze">Pauzeren</button>
+          <button id="bReset">Opnieuw</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <p class="voet">
+    De regelwet is regel voor regel dezelfde als <b>core.py</b>: doel = max(maandpiek, 2500) − marge,
+    envelope = min(doel, resterend budget ÷ resterende tijd), geklemd op het doel.
+    De budgetteur herrekent elke 30 s en publiceert bij ≥50 W verschil of na 30 s hartslag.
+    evcc regelt daarbinnen elke seconde, met 6 A als ondergrens en 300 W/s als helling —
+    <b>dat laatste is een aanname</b>, geen gemeten waarde.
+  </p>
+</div>
+
+<script>
+/* ====================== regelwet — port van core.py ====================== */
+const KWARTIER_SEC = 900, ONDERGRENS_W = 2500;
+const INST = { marge_w:150, piek_bovengrens_w:9200, envelope_vloer_w:100,
+               publicatie_drempel_w:50, hartslag_sec:30 };
+
+const klem = (v,l,h) => Math.max(l, Math.min(h, v));
+const resterendSec = ts => KWARTIER_SEC - (ts % KWARTIER_SEC);
+
+function bepaal(m, inst){
+  if(!m.geldig){
+    const veilig = ONDERGRENS_W - inst.marge_w;
+    return {envelope_w:Math.round(veilig), doel_w:veilig,
+            reden:'meting ongeldig — terugval op ondergrens', letOp:true};
+  }
+  const ruwePiek = klem(m.maandpiek_w, ONDERGRENS_W, inst.piek_bovengrens_w);
+  let doel = ruwePiek - inst.marge_w, vrijgaveActief = false;
+  if(m.vrijgave_w != null && m.vrijgave_w > doel){
+    doel = klem(m.vrijgave_w, doel, inst.piek_bovengrens_w);
+    vrijgaveActief = true;
+  }
+  const budgetWh = doel * KWARTIER_SEC / 3600;
+  const restWh   = budgetWh - m.kwartier_verbruikt_wh;
+  const remSec   = Math.max(resterendSec(m.ts), 1);
+  const toegestaan = restWh * 3600 / remSec;
+  const envelope = klem(Math.min(doel, toegestaan), inst.envelope_vloer_w, doel);
+
+  let reden, letOp = false;
+  if(!m.ev_aangesloten)                 reden = 'geen auto aangesloten — envelope informatief';
+  else if(vrijgaveActief)              {reden = 'vrijgave actief — hogere piek bewust geaccepteerd'; letOp = true;}
+  else if(envelope <= inst.envelope_vloer_w){reden = 'kwartierbudget op — laden onderbroken'; letOp = true;}
+  else if(toegestaan < doel)            reden = 'voorlopend op budget — envelope verlaagd';
+  else                                  reden = 'vlak op doel';
+
+  return {envelope_w:Math.round(envelope), doel_w:doel, reden, letOp,
+          budgetWh, restWh, toegestaan};
+}
+
+/* laadmodel — replay.Laadmodel */
+const MIN_W = 1*230*6, MAX_W = 1*230*32, SLEW = 300;
+function volgendLaadvermogen(huidig, envelope, huishouden, dt){
+  let doel = envelope - huishouden;
+  doel = doel < MIN_W ? 0 : Math.min(doel, MAX_W);
+  const stap = SLEW*dt;
+  return doel > huidig ? Math.min(doel, huidig+stap) : Math.max(doel, huidig-stap);
+}
+
+/* ====================== toestand ====================== */
+const S = {
+  t:0, pEv:0, verbruiktWh:0, maandpiekW:2500,
+  envelope:2350, doel:2350, reden:'vlak op doel', letOp:false,
+  laatstePub:null, pubTeller:0, laatsteWaarde:null,
+  stoten:[], buffer:[], kwartieren:[],
+  tempo:10, draait:true
+};
+const el = id => document.getElementById(id);
+const invoer = {
+  huis:el('sHuis'), piek:el('sPiek'), marge:el('sMarge'), vrij:el('sVrij'),
+  auto:el('cAuto'), storing:el('cStoring')
+};
+
+function reset(){
+  S.t=0; S.pEv=0; S.verbruiktWh=0; S.maandpiekW=parseFloat(invoer.piek.value)*1000;
+  S.laatstePub=null; S.pubTeller=0; S.laatsteWaarde=null;
+  S.stoten=[]; S.buffer=[]; S.kwartieren=[];
+  tekenHist();
+}
+
+/* ====================== simulatiestap (1 s) ====================== */
+function stap(){
+  const dt = 1;
+
+  /* huishouden: basis + actieve stoten */
+  let huis = parseFloat(invoer.huis.value);
+  S.stoten = S.stoten.filter(s => S.t < s.eind);
+  for(const s of S.stoten) huis += s.w;
+
+  /* budgetteur — elke 30 s, net als daemon.tik() */
+  if(S.t % 30 === 0){
+    const vrij = parseFloat(invoer.vrij.value);
+    const b = bepaal({
+      ts:S.t,
+      kwartier_verbruikt_wh:S.verbruiktWh,
+      maandpiek_w:S.maandpiekW,
+      ev_aangesloten:invoer.auto.checked,
+      vrijgave_w: vrij > 0 ? vrij : null,
+      geldig: !invoer.storing.checked
+    }, {...INST, marge_w:parseFloat(invoer.marge.value)});
+
+    S.doel=b.doel_w; S.reden=b.reden; S.letOp=b.letOp;
+
+    /* publicatiepoort */
+    const eerste = S.laatsteWaarde === null;
+    const groot  = !eerste && Math.abs(b.envelope_w - S.laatsteWaarde) >= INST.publicatie_drempel_w;
+    const hartslag = !eerste && (S.t - S.laatstePub) >= INST.hartslag_sec;
+    if(eerste || groot || hartslag){
+      S.envelope = b.envelope_w;
+      S.laatsteWaarde = b.envelope_w;
+      S.laatstePub = S.t;
+      S.pubTeller++;
+    }
+  }
+
+  /* evcc regelt binnen de envelope */
+  S.pEv = invoer.auto.checked ? volgendLaadvermogen(S.pEv, S.envelope, huis, dt) : 0;
+  const pNet = huis + S.pEv;
+  S.verbruiktWh += Math.max(0, pNet) * dt / 3600;
+
+  S.buffer.push({t:S.t, net:pNet, env:S.envelope, ev:S.pEv, doel:S.doel});
+  if(S.buffer.length > KWARTIER_SEC) S.buffer.shift();
+
+  S.t += dt;
+
+  /* kwartiergrens: piek vastleggen, budget resetten */
+  if(S.t % KWARTIER_SEC === 0){
+    const gem = S.verbruiktWh * 3600 / KWARTIER_SEC;
+    S.kwartieren.push(gem);
+    if(S.kwartieren.length > 14) S.kwartieren.shift();
+    if(gem > S.maandpiekW){                       /* eenmaal betaald = gratis */
+      S.maandpiekW = gem;
+      invoer.piek.value = (gem/1000).toFixed(1);
+      el('vPiek').textContent = (gem/1000).toFixed(2).replace('.',',');
+    }
+    S.verbruiktWh = 0;
+    tekenHist();
+  }
+}
+
+/* ====================== tekenen ====================== */
+const fmt = n => Math.round(n).toLocaleString('nl-BE');
+
+function boog(id, r, deel){
+  const p = el(id);
+  if(deel <= 0){ p.setAttribute('d',''); return; }
+  const f = Math.min(deel, 0.9999), hoek = f*2*Math.PI - Math.PI/2;
+  const x = 100 + r*Math.cos(hoek), y = 100 + r*Math.sin(hoek);
+  p.setAttribute('d', `M 100 ${100-r} A ${r} ${r} 0 ${f>0.5?1:0} 1 ${x} ${y}`);
+}
+
+function teken(){
+  const remSec = resterendSec(S.t);
+  const tijdDeel = (KWARTIER_SEC - remSec)/KWARTIER_SEC;
+  const budgetWh = S.doel * KWARTIER_SEC / 3600;
+  const budgetDeel = budgetWh > 0 ? S.verbruiktWh/budgetWh : 0;
+
+  boog('arcTijd', 84, tijdDeel);
+  boog('arcBudget', 66, budgetDeel);
+  el('arcBudget').setAttribute('stroke', budgetDeel > tijdDeel + 0.02 ? '#b3271e' : '#1e5aa8');
+  el('klokGetal').textContent = Math.round(budgetDeel*100)+'%';
+  el('klokGetal').setAttribute('fill', budgetDeel > 1 ? '#b3271e' : '#12161c');
+  el('klokTijd').textContent = Math.round(remSec)+' s resterend';
+  el('lgTijd').textContent = Math.round(tijdDeel*100)+'%';
+  el('lgBudget').textContent = Math.round(budgetDeel*100)+'%';
+  el('lgWh').textContent = fmt(S.verbruiktWh)+' Wh';
+
+  const laatste = S.buffer[S.buffer.length-1] || {net:0};
+  el('mEnv').innerHTML = fmt(S.envelope)+'<span>W</span>';
+  el('mNet').innerHTML = fmt(laatste.net)+'<span>W</span>';
+  el('mEv').innerHTML  = fmt(S.pEv)+'<span>W</span>';
+  el('mPiek').innerHTML = (S.maandpiekW/1000).toFixed(2).replace('.',',')+'<span>kW</span>';
+
+  el('redenTekst').textContent = S.reden;
+  el('reden').className = 'reden'+(S.letOp?' let-op':'');
+  el('busPub').textContent = S.laatstePub===null ? 'laatste publicatie: —'
+      : 'laatste publicatie: '+(S.t-S.laatstePub)+' s geleden';
+  el('busTeller').textContent = S.pubTeller+' berichten';
+
+  tekenChart();
+  requestAnimationFrame(teken);
+}
+
+function tekenChart(){
+  const svg = el('chart'), B = S.buffer;
+  if(!B.length){ svg.innerHTML=''; return; }
+  const H=190, W=900, top = Math.max(4000, S.doel*1.35, ...B.map(p=>p.net));
+  const y = v => H - klem(v/top,0,1)*(H-10) - 5;
+  const x = i => i/Math.max(KWARTIER_SEC-1,1)*W;
+  const lijn = (sel,kleur,br) =>
+    `<polyline fill="none" stroke="${kleur}" stroke-width="${br}" stroke-linejoin="round" points="${
+      B.map((p,i)=>`${x(i).toFixed(1)},${y(sel(p)).toFixed(1)}`).join(' ')}"/>`;
+  const rasters = [1000,2000,3000,4000,5000,6000,7000].filter(v=>v<top).map(v=>
+    `<line x1="0" y1="${y(v)}" x2="${W}" y2="${y(v)}" stroke="#c3c9d0" stroke-width="1"/>
+     <text x="4" y="${y(v)-3}" style="font-family:'IBM Plex Mono',monospace;font-size:9px;fill:#6b7480">${v/1000} kW</text>`).join('');
+  svg.innerHTML = rasters
+    + `<polyline fill="none" stroke="#6b7480" stroke-width="1.5" stroke-dasharray="5 4" points="${
+        B.map((p,i)=>`${x(i).toFixed(1)},${y(p.doel).toFixed(1)}`).join(' ')}"/>`
+    + lijn(p=>p.env,'#6f7a00',2.5)
+    + lijn(p=>p.net,'#1e5aa8',1.8)
+    + lijn(p=>p.ev,'#8b5a2b',1.8);
+}
+
+function tekenHist(){
+  const h = el('hist');
+  if(!S.kwartieren.length){ h.innerHTML=''; el('histInfo').textContent='nog geen volledig kwartier'; return; }
+  const top = Math.max(...S.kwartieren, S.maandpiekW)*1.1;
+  h.innerHTML = S.kwartieren.map(v=>{
+    const hoog = Math.max(2, v/top*78);
+    const over = v > S.maandpiekW - 1;
+    return `<div class="bar${over?' over':''}" style="height:${hoog}px" title="${fmt(v)} W"></div>`;
+  }).join('');
+  const hoogste = Math.max(...S.kwartieren);
+  el('histInfo').textContent = `hoogste ${fmt(hoogste)} W · maandpiek ${(S.maandpiekW/1000).toFixed(2).replace('.',',')} kW`;
+}
+
+/* ====================== bediening ====================== */
+el('sHuis').addEventListener('input', e => el('vHuis').textContent = e.target.value);
+el('sMarge').addEventListener('input', e => el('vMarge').textContent = e.target.value);
+el('sPiek').addEventListener('input', e => {
+  el('vPiek').textContent = parseFloat(e.target.value).toFixed(2).replace('.',',');
+  S.maandpiekW = parseFloat(e.target.value)*1000;
+});
+el('sVrij').addEventListener('input', e => {
+  const v = parseFloat(e.target.value);
+  el('vVrij').textContent = v===0 ? 'uit' : fmt(v)+' W';
+});
+
+const stoot = (w,duur) => S.stoten.push({w, eind:S.t+duur});
+el('bOven').onclick  = () => stoot(2100, 900);
+el('bKoker').onclick = () => stoot(1800, 120);
+el('bZon').onclick   = () => stoot(-2500, 600);
+
+document.querySelectorAll('[data-tempo]').forEach(b => b.onclick = () => {
+  document.querySelectorAll('[data-tempo]').forEach(x=>x.classList.remove('aan'));
+  b.classList.add('aan'); S.tempo = parseInt(b.dataset.tempo,10);
+});
+el('bPauze').onclick = e => {
+  S.draait = !S.draait;
+  e.target.textContent = S.draait ? 'Pauzeren' : 'Hervatten';
+  e.target.classList.toggle('aan', !S.draait);
+};
+el('bReset').onclick = reset;
+
+/* ====================== klok ====================== */
+let schuld = 0, vorige = performance.now();
+setInterval(() => {
+  const nu = performance.now();
+  if(S.draait){
+    schuld += (nu - vorige)/1000 * S.tempo;
+    let n = 0;
+    while(schuld >= 1 && n < 300){ stap(); schuld -= 1; n++; }
+  }
+  vorige = nu;
+}, 50);
+
+reset();
+requestAnimationFrame(teken);
+</script>
+</body>
+</html>
