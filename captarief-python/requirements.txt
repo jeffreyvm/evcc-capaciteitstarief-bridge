@@ -1,0 +1,3 @@
+# Alleen de daemon heeft een externe afhankelijkheid.
+# logger.py en replay.py draaien op stdlib.
+paho-mqtt>=2.0
