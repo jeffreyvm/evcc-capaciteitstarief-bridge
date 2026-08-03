@@ -1,0 +1,12 @@
+# Secrets / config met gevoelige data
+secrets.yaml
+*.env
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# OS
+.DS_Store
