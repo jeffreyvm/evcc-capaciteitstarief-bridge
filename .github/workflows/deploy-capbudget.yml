@@ -1,0 +1,63 @@
+name: Deploy capbudget naar Proxmox LXC
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - captarief-python/**
+      - .github/workflows/deploy-capbudget.yml
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-capbudget
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Run tests
+        working-directory: captarief-python
+        run: python3 -m unittest discover -s tests
+
+  deploy:
+    needs: test
+    runs-on: [self-hosted, capbudget]
+    environment: capbudget-lxc
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync bestanden naar /opt/capbudget
+        run: |
+          sudo rsync -a --delete \
+            --exclude tests \
+            --exclude docs \
+            --exclude .gitignore \
+            --exclude README.md \
+            --exclude proefdraai.html \
+            --exclude trial-run.html \
+            captarief-python/ /opt/capbudget/
+          sudo chown -R capbudget:capbudget /opt/capbudget
+
+      - name: Installeer/ververs dependencies
+        run: |
+          sudo pip install --break-system-packages -r /opt/capbudget/requirements.txt
+
+      - name: Herstart draaiende services
+        run: |
+          # try-restart raakt alleen services aan die al actief zijn, dus dit
+          # is veilig ongeacht welke uitrolstap (logger-only of logger+daemon)
+          # momenteel actief is op deze LXC.
+          sudo systemctl try-restart capbudget-logger.service
+          sudo systemctl try-restart capbudget-daemon.service
+
+      - name: Status
+        run: |
+          systemctl is-active capbudget-logger.service || true
+          systemctl is-active capbudget-daemon.service || true

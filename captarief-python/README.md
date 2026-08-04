@@ -108,6 +108,49 @@ systemctl enable --now capbudget-logger
 
 De daemon pas inschakelen bij stap 4.
 
+## CI/CD — automatische deploy vanaf GitHub Actions
+
+`.github/workflows/deploy-capbudget.yml` draait tests op een GitHub-hosted
+runner en rolt daarna `captarief-python/` uit naar `/opt/capbudget` op de LXC,
+via een **self-hosted runner die op de LXC zelf draait**. Er hoeft geen poort
+naar buiten open — de runner haalt jobs op (outbound naar GitHub).
+
+Eenmalige setup op de LXC:
+
+```bash
+# 1. self-hosted runner installeren (als eigen systeemgebruiker, niet als capbudget)
+adduser --system --group --home /opt/actions-runner runner
+su - runner
+mkdir /opt/actions-runner && cd /opt/actions-runner
+# volg de "Add runner" instructies van de repo: Settings → Actions → Runners → New self-hosted runner
+./config.sh --url https://github.com/<org>/evcc-capaciteitstarief-bridge --token <TOKEN> --labels capbudget
+exit
+cd /opt/actions-runner && sudo ./svc.sh install runner && sudo ./svc.sh start
+
+# 2. rsync op de LXC beschikbaar maken
+apt install -y rsync
+
+# 3. gerichte sudo-rechten voor de runner-gebruiker (geen wachtwoord, alleen deze commando's)
+cat >/etc/sudoers.d/capbudget-runner <<'EOF'
+runner ALL=(root) NOPASSWD: /usr/bin/rsync, /usr/bin/chown, /usr/bin/pip, \
+  /usr/bin/systemctl try-restart capbudget-logger.service, \
+  /usr/bin/systemctl try-restart capbudget-daemon.service, \
+  /usr/bin/systemctl is-active capbudget-logger.service, \
+  /usr/bin/systemctl is-active capbudget-daemon.service
+EOF
+visudo -cf /etc/sudoers.d/capbudget-runner   # syntax controleren
+```
+
+Maak in de GitHub-repo een environment `capbudget-lxc` aan (Settings →
+Environments) om de deploy-job optioneel achter een goedkeuringsstap te
+zetten voordat hij naar productie schrijft.
+
+De workflow herstart met `systemctl try-restart`, wat alleen services aanraakt
+die al actief zijn — veilig ongeacht of alleen `capbudget-logger` draait
+(stap 1–3) of ook `capbudget-daemon` (stap 4+). Het `.env`-bestand met het
+HA-token wordt nooit door de workflow aangeraakt; dat blijft handmatig beheer
+op de LXC.
+
 > **Klok gelijkzetten.** De kwartiergrenzen komen uit `ts % 900`. Loopt de klok
 > scheef, dan liggen de gesimuleerde kwartieren naast die van de digitale meter
 > en corrigeert de regelaar op de verkeerde momenten. Zorg dat er op de
