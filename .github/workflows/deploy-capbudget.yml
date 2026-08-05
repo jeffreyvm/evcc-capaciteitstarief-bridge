@@ -55,9 +55,11 @@ jobs:
           # is veilig ongeacht welke uitrolstap (logger-only of logger+daemon)
           # momenteel actief is op deze LXC.
           sudo systemctl try-restart capbudget-logger.service
+          sudo systemctl try-restart capbudget-dashboard.service
           sudo systemctl try-restart capbudget-daemon.service
 
       - name: Status
         run: |
           systemctl is-active capbudget-logger.service || true
+          systemctl is-active capbudget-dashboard.service || true
           systemctl is-active capbudget-daemon.service || true

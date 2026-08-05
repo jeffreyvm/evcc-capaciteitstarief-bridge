@@ -37,8 +37,9 @@ actuatiepad regelen tegen elkaar in.
 core.py             regelwet, geen I/O — ook gebruikt door de replay-harness
 bronnen.py          HA-lezer, gedeeld door daemon en logger
 daemon.py           laag 1: HA lezen → bepaal() → MQTT publiceren
-state.py            gedeelde toestand tussen daemon-lus en dashboard
-web.py              alleen-lezen dashboard (FastAPI), poort 8770
+dashboard.py        alleen-lezen variant: HA lezen → bepaal(), publiceert niets
+state.py            gedeelde toestand tussen lus en dashboard
+web.py              HTTP-laag van het dashboard (FastAPI), poort 8770
 logger.py           stap 1: CSV loggen, regelt niets
 replay.py           stap 2: regelwet offline testen op gelogde data
 proefdraai.html     interactieve simulatie in de browser
@@ -81,13 +82,24 @@ De simulatie draait dezelfde formule en dezelfde constanten.
 
 ## Dashboard
 
-`daemon.py` start naast de MQTT-publicatie een alleen-lezen dashboard op
-poort 8770 (`WEB_HOST`/`WEB_PORT`). Het toont het laatst berekende `Besluit`
-— envelope, doel, reden, kwartierbudget — en ververst elke 5 s via
-`GET /api/status`. Het dashboard schrijft nergens naartoe; het actuatiepad
-blijft uitsluitend `bepaal()` → MQTT.
+Alleen-lezen HTTP-dashboard op poort 8770 (`WEB_HOST`/`WEB_PORT`), toont het
+laatst berekende `Besluit` — envelope, doel, reden, kwartierbudget — en
+ververst elke 5 s via `GET /api/status`. Het schrijft nergens naartoe.
+
+Er zijn twee manieren om het te draaien, en welke je gebruikt hangt af van
+waar je in de uitrolvolgorde zit:
+
+- **`dashboard.py`** — leest HA, rekent `bepaal()` uit, publiceert niets.
+  Geen paho-mqtt-afhankelijkheid, geen actuatiepad. Dit is de aan te raden
+  service zolang de daemon nog niet aan staat (stap 1-3), en kan gewoon
+  naast de `capbudget-daemon` blijven draaien zodra die wél actief is —
+  beide lezen dezelfde HA-sensoren, geen van beide schrijft naar de andere.
+- **`daemon.py`** — start hetzelfde dashboard automatisch mee zodra de
+  daemon actief is (stap 4+); een aparte `capbudget-dashboard` is dan niet
+  nodig, maar schaadt ook niet.
 
 ```bash
+sudo systemctl enable --now capbudget-dashboard   # alleen-lezen, geen risico
 curl http://<lxc>:8770/api/status
 ```
 
@@ -148,8 +160,10 @@ apt install -y rsync
 cat >/etc/sudoers.d/capbudget-runner <<'EOF'
 runner ALL=(root) NOPASSWD: /usr/bin/rsync, /usr/bin/chown, /usr/bin/pip, \
   /usr/bin/systemctl try-restart capbudget-logger.service, \
+  /usr/bin/systemctl try-restart capbudget-dashboard.service, \
   /usr/bin/systemctl try-restart capbudget-daemon.service, \
   /usr/bin/systemctl is-active capbudget-logger.service, \
+  /usr/bin/systemctl is-active capbudget-dashboard.service, \
   /usr/bin/systemctl is-active capbudget-daemon.service
 EOF
 visudo -cf /etc/sudoers.d/capbudget-runner   # syntax controleren
