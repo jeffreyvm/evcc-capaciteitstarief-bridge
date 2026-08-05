@@ -19,12 +19,16 @@ import logging
 import os
 import signal
 import sys
+import threading
 import time
 
 import paho.mqtt.client as mqtt
+import uvicorn
 
 from bronnen import Config, HABron
 from core import Instellingen, Publicatiepoort, bepaal
+from state import SharedState
+from web import maak_app
 
 log = logging.getLogger("capbudget")
 
@@ -51,12 +55,13 @@ class MQTTUitgang:
 
 
 class Loop:
-    def __init__(self, cfg: Config, inst: Instellingen) -> None:
+    def __init__(self, cfg: Config, inst: Instellingen, state: SharedState) -> None:
         self._cfg = cfg
         self._inst = inst
         self._bron = HABron(cfg)
         self._uit = MQTTUitgang(cfg)
         self._poort = Publicatiepoort(inst)
+        self._state = state
         self._draait = True
 
     def stop(self, *_args) -> None:
@@ -68,18 +73,23 @@ class Loop:
         meting = self._bron.lees_meting(nu)
         besluit = bepaal(meting, self._inst)
 
+        status = {
+            "envelope_w": besluit.envelope_w,
+            "doel_w": round(besluit.doel_w, 1),
+            "reden": besluit.reden,
+            **besluit.diagnostiek,
+        }
+
         if self._poort.moet_publiceren(besluit, nu):
-            status = {
-                "envelope_w": besluit.envelope_w,
-                "doel_w": round(besluit.doel_w, 1),
-                "reden": besluit.reden,
-                **besluit.diagnostiek,
-            }
             if self._uit.publiceer(besluit.envelope_w, status):
                 self._poort.bevestig(besluit, nu)
+                self._state.update(status, gepubliceerd=True)
                 log.info("envelope %d W - %s", besluit.envelope_w, besluit.reden)
             else:
+                self._state.update(status, gepubliceerd=False)
                 log.error("publiceren mislukt, poort niet bevestigd")
+        else:
+            self._state.update(status, gepubliceerd=False)
 
     def run(self) -> None:
         signal.signal(signal.SIGTERM, self.stop)
@@ -95,6 +105,25 @@ class Loop:
         log.info("budgetteur gestopt - evcc valt terug op statische maxPower")
 
 
+def start_dashboard(cfg: Config, state: SharedState) -> None:
+    """Draait het alleen-lezen dashboard in een achtergrondthread.
+
+    Los proces zou ook kunnen, maar dan moet `SharedState` via een socket of
+    bestand gedeeld worden voor iets dat alleen `bepaal()`'s laatste uitkomst
+    toont. Eén thread, geen extra transportlaag.
+    """
+    config = uvicorn.Config(
+        maak_app(state),
+        host=cfg.web_host,
+        port=cfg.web_port,
+        log_level="warning",
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, name="dashboard", daemon=True)
+    thread.start()
+    log.info("dashboard beschikbaar op http://%s:%d", cfg.web_host, cfg.web_port)
+
+
 def main() -> int:
     logging.basicConfig(
         level=os.getenv("LOGLEVEL", "INFO"),
@@ -104,7 +133,9 @@ def main() -> int:
     if not cfg.ha_token:
         log.error("HA_TOKEN ontbreekt")
         return 1
-    Loop(cfg, Instellingen()).run()
+    state = SharedState()
+    start_dashboard(cfg, state)
+    Loop(cfg, Instellingen(), state).run()
     return 0
 
 

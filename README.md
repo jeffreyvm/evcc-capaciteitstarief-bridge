@@ -96,4 +96,4 @@ python3 -m unittest discover -s tests
 
 - **Actief:** Capaciteitstarief v8 (Home Assistant), regelt op basis van net-feedback i.p.v. schatting
 - **Open:** keuze tussen Route A (evcc `batteryDischargeControl: false`) en Route B (MQTT `batteryMode` keepalive) voor batterij-ondersteuning bij EV-laden
-- **Ontworpen, niet gevalideerd:** standalone `captarief` Python-project (Debian 13 LXC, dashboard poort 8770)
+- **Ontworpen, niet gevalideerd:** standalone `captarief` Python-project (Debian 13 LXC, dashboard poort 8770 — nu aanwezig in `captarief-python/web.py`)

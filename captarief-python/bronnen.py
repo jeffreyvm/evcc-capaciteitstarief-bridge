@@ -48,6 +48,9 @@ class Config:
     interval_sec: float = float(os.getenv("INTERVAL_SEC", "30"))
     max_leeftijd_sec: float = 180.0
 
+    web_host: str = os.getenv("WEB_HOST", "0.0.0.0")
+    web_port: int = int(os.getenv("WEB_PORT", "8770"))
+
 
 class HABron:
     def __init__(self, cfg: Config) -> None:

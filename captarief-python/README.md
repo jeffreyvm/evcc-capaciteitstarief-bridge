@@ -37,6 +37,8 @@ actuatiepad regelen tegen elkaar in.
 core.py             regelwet, geen I/O — ook gebruikt door de replay-harness
 bronnen.py          HA-lezer, gedeeld door daemon en logger
 daemon.py           laag 1: HA lezen → bepaal() → MQTT publiceren
+state.py            gedeelde toestand tussen daemon-lus en dashboard
+web.py              alleen-lezen dashboard (FastAPI), poort 8770
 logger.py           stap 1: CSV loggen, regelt niets
 replay.py           stap 2: regelwet offline testen op gelogde data
 proefdraai.html     interactieve simulatie in de browser
@@ -76,6 +78,18 @@ python3 -m unittest discover -s tests
 
 Open `proefdraai.html` in een browser om de regelwet met de hand te bespelen.
 De simulatie draait dezelfde formule en dezelfde constanten.
+
+## Dashboard
+
+`daemon.py` start naast de MQTT-publicatie een alleen-lezen dashboard op
+poort 8770 (`WEB_HOST`/`WEB_PORT`). Het toont het laatst berekende `Besluit`
+— envelope, doel, reden, kwartierbudget — en ververst elke 5 s via
+`GET /api/status`. Het dashboard schrijft nergens naartoe; het actuatiepad
+blijft uitsluitend `bepaal()` → MQTT.
+
+```bash
+curl http://<lxc>:8770/api/status
+```
 
 ## Uitrolvolgorde
 
