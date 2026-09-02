@@ -1,5 +1,0 @@
-# Alleen de daemon heeft externe afhankelijkheden.
-# logger.py en replay.py draaien op stdlib.
-paho-mqtt>=2.0
-fastapi>=0.110
-uvicorn>=0.29

@@ -1,0 +1,33 @@
+[Unit]
+Description=capaciteit — Belgian capacity tariff controller for evcc
+Documentation=https://github.com/jeffreyvm/evcc-capaciteitstarief-bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=capaciteit
+Group=capaciteit
+WorkingDirectory=/opt/capaciteit
+EnvironmentFile=/etc/capaciteit/capaciteit.env
+ExecStart=/opt/capaciteit/.venv/bin/python -m capaciteit
+Restart=always
+RestartSec=10
+
+# If this service dies, evcc's external battery watchdog expires and evcc
+# resumes its own battery logic. Failing is safe; failing loudly is better.
+StandardOutput=journal
+StandardError=journal
+
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/capaciteit
+
+[Install]
+WantedBy=multi-user.target

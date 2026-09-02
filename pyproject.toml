@@ -1,0 +1,31 @@
+[project]
+name = "capaciteit"
+version = "1.0.0"
+description = "Belgian capacity tariff (capaciteitstarief) peak shaving controller for evcc"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["aiohttp>=3.9"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.0"]
+
+[project.urls]
+Homepage = "https://github.com/jeffreyvm/evcc-capaciteitstarief-bridge"
+
+[project.scripts]
+capaciteit = "capaciteit.__main__:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["capaciteit*"]
+
+[tool.setuptools.package-data]
+capaciteit = ["static/*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

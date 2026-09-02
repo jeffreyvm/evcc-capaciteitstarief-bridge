@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>capaciteit</title>
+<style>
+  :root {
+    --base:#12141a; --panel:#191c24; --line:#272c38; --line-soft:#1f232d;
+    --text:#e8eaf0; --muted:#868da0; --dim:#5c6376;
+    --calm:#57b39c; --warn:#dda23f; --peak:#d4596b; --idle:#5a6376;
+    --radius:10px;
+    --sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:var(--base); color:var(--text);
+    font-family:var(--sans); font-size:15px; line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { max-width:1080px; margin:0 auto; padding:24px 20px 64px; }
+
+  header { display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; margin-bottom:22px; }
+  header h1 { font-size:19px; font-weight:600; margin:0; letter-spacing:-0.01em; }
+  header .sub { color:var(--muted); font-size:13px; }
+  .badge {
+    margin-left:auto; font-size:12px; padding:4px 10px; border-radius:99px;
+    border:1px solid var(--line); color:var(--muted);
+  }
+  .badge.live { color:var(--peak); border-color:rgba(212,89,107,.4); }
+  .badge.dry  { color:var(--calm); border-color:rgba(87,179,156,.35); }
+
+  /* --- hero: the running quarter --- */
+  .quarter {
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:var(--radius); padding:20px 20px 12px; margin-bottom:18px;
+  }
+  .qhead { display:flex; align-items:flex-end; gap:26px; flex-wrap:wrap; margin-bottom:16px; }
+  .reading .value {
+    font-family:var(--mono); font-size:40px; line-height:1;
+    font-variant-numeric:tabular-nums; letter-spacing:-0.02em;
+  }
+  .reading .label { color:var(--muted); font-size:13px; margin-top:6px; }
+  .reading.small .value { font-size:22px; color:var(--text); }
+  .reading .value.calm { color:var(--calm); }
+  .reading .value.warn { color:var(--warn); }
+  .reading .value.peak { color:var(--peak); }
+  .spacer { flex:1; }
+  canvas { display:block; width:100%; height:190px; }
+  .legend { display:flex; gap:18px; color:var(--dim); font-size:12px; padding-top:8px; }
+  .legend i { display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:6px; }
+
+  /* --- panels --- */
+  .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(300px,1fr)); gap:14px; }
+  .card {
+    background:var(--panel); border:1px solid var(--line);
+    border-radius:var(--radius); padding:18px;
+  }
+  .card h2 { font-size:14px; font-weight:600; margin:0 0 14px; color:var(--muted); }
+  .mode { display:flex; align-items:center; gap:10px; margin-bottom:10px; }
+  .dot { width:9px; height:9px; border-radius:99px; background:var(--dim); flex:none; }
+  .mode .name { font-size:17px; font-weight:600; }
+  .reason { color:var(--muted); font-size:13.5px; }
+  .rows { margin-top:14px; border-top:1px solid var(--line-soft); }
+  .row {
+    display:flex; justify-content:space-between; gap:12px;
+    padding:7px 0; border-bottom:1px solid var(--line-soft); font-size:13.5px;
+  }
+  .row:last-child { border-bottom:0; }
+  .row span:first-child { color:var(--muted); }
+  .row span:last-child { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+
+  .soc { display:flex; align-items:center; gap:14px; margin-top:4px; }
+  .socbar { flex:1; height:8px; border-radius:99px; background:#232833; position:relative; overflow:hidden; }
+  .socfill { height:100%; border-radius:99px; background:var(--calm); }
+  .socmark { position:absolute; top:-3px; width:2px; height:14px; background:var(--warn); }
+
+  footer { margin-top:20px; color:var(--dim); font-size:12.5px; }
+  .errors { margin-top:14px; }
+  .err {
+    border-left:2px solid var(--peak); padding:6px 0 6px 12px;
+    color:var(--muted); font-size:13px; margin-bottom:6px;
+  }
+  .offline .wrap { opacity:.5; transition:opacity .3s; }
+  @media (max-width:560px) {
+    .reading .value { font-size:32px; }
+    canvas { height:150px; }
+  }
+  @media (prefers-reduced-motion:reduce) { * { transition:none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>capaciteit</h1>
+    <span class="sub" id="lp">—</span>
+    <span class="badge" id="mode-badge">verbinden…</span>
+  </header>
+
+  <section class="quarter">
+    <div class="qhead">
+      <div class="reading">
+        <div class="value" id="projected">—</div>
+        <div class="label">verwacht kwartiergemiddelde</div>
+      </div>
+      <div class="reading small">
+        <div class="value" id="effpeak">—</div>
+        <div class="label">maandpiek waarop je betaalt</div>
+      </div>
+      <div class="reading small">
+        <div class="value" id="remaining">—</div>
+        <div class="label">rest van dit kwartier</div>
+      </div>
+      <div class="spacer"></div>
+      <div class="reading small">
+        <div class="value" id="gridnow">—</div>
+        <div class="label">netvermogen nu</div>
+      </div>
+    </div>
+    <canvas id="chart"></canvas>
+    <div class="legend">
+      <span><i style="background:#3d5a72"></i>verbruikt</span>
+      <span><i style="background:#2f4557"></i>projectie</span>
+      <span><i style="background:var(--peak)"></i>maandpiek</span>
+      <span><i style="background:var(--warn)"></i>budgetgrens</span>
+    </div>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Batterij</h2>
+      <div class="mode"><span class="dot" id="bat-dot"></span><span class="name" id="bat-mode">—</span></div>
+      <div class="reason" id="bat-reason">—</div>
+      <div class="soc">
+        <div class="socbar"><div class="socfill" id="socfill" style="width:0"></div><div class="socmark" id="socmark" style="left:0"></div></div>
+        <span id="soc-label" style="font-family:var(--mono);font-size:13px">—</span>
+      </div>
+      <div class="rows">
+        <div class="row"><span>evcc-stand</span><span id="bat-evcc">—</span></div>
+        <div class="row"><span>reserve</span><span id="bat-reserve">—</span></div>
+        <div class="row"><span>netladen</span><span id="bat-charge">—</span></div>
+        <div class="row"><span>vrijgavedrempel</span><span id="bat-thresh">—</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Laden</h2>
+      <div class="mode"><span class="dot" id="ev-dot"></span><span class="name" id="ev-status">—</span></div>
+      <div class="reason" id="ev-reason">—</div>
+      <div class="rows">
+        <div class="row"><span>setpoint</span><span id="ev-setpoint">—</span></div>
+        <div class="row"><span>aanbevolen</span><span id="ev-recommended">—</span></div>
+        <div class="row"><span>laadvermogen</span><span id="ev-power">—</span></div>
+        <div class="row"><span>budget</span><span id="ev-budget">—</span></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Deze maand</h2>
+      <div class="mode"><span class="dot" id="peak-dot"></span><span class="name" id="peak-value">—</span></div>
+      <div class="reason" id="peak-reason">—</div>
+      <div class="rows">
+        <div class="row"><span>kwartier verbruikt</span><span id="q-used">—</span></div>
+        <div class="row"><span>kwartierbudget</span><span id="q-budget">—</span></div>
+        <div class="row"><span>zon</span><span id="pv">—</span></div>
+        <div class="row"><span>huis</span><span id="home">—</span></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="errors" id="errors"></div>
+  <footer id="foot">—</footer>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const kw = w => (w/1000).toFixed(2) + ' kW';
+const pct = v => Math.round(v) + '%';
+let last = null;
+
+function mmss(s) {
+  s = Math.max(0, Math.round(s));
+  return String(Math.floor(s/60)).padStart(2,'0') + ':' + String(s%60).padStart(2,'0');
+}
+
+const MODE_COLOR = { release:'var(--peak)', precharge:'var(--warn)', reserve:'var(--calm)', idle:'var(--dim)' };
+const MODE_NAME  = { release:'Vrijgegeven — scheert de piek', precharge:'Netladen voor het piekvenster',
+                     reserve:'Reserve vastgehouden', idle:'Rust' };
+
+async function poll() {
+  try {
+    const r = await fetch('api/state', {cache:'no-store'});
+    const d = await r.json();
+    document.body.classList.remove('offline');
+    if (d.latest) render(d);
+    else $('foot').textContent = 'Wacht op eerste meting van evcc…';
+  } catch (e) {
+    document.body.classList.add('offline');
+    $('foot').textContent = 'Geen verbinding met de capaciteit-service.';
+  }
+}
+
+function render(d) {
+  last = d;
+  const s = d.latest, ev = s.ev, bt = s.battery, q = s.quarter;
+
+  $('lp').textContent = s.loadpoint_title;
+  const badge = $('mode-badge');
+  badge.textContent = s.dry_run ? 'proefdraai — stuurt niets' : 'actief — stuurt evcc';
+  badge.className = 'badge ' + (s.dry_run ? 'dry' : 'live');
+
+  // hero
+  const threshold = bt.release_threshold_w;
+  const pv = $('projected');
+  pv.textContent = kw(s.projected_w);
+  pv.className = 'value ' + (s.projected_w >= threshold ? 'peak'
+                          : s.projected_w >= threshold * 0.8 ? 'warn' : 'calm');
+  $('effpeak').textContent = s.effective_peak_kw.toFixed(2) + ' kW';
+  $('remaining').textContent = mmss(q.remaining_s);
+  $('gridnow').textContent = kw(s.grid_w);
+
+  // battery
+  $('bat-mode').textContent = MODE_NAME[bt.mode] || bt.mode;
+  $('bat-dot').style.background = MODE_COLOR[bt.mode] || 'var(--dim)';
+  $('bat-reason').textContent = bt.reason;
+  $('bat-evcc').textContent = bt.evcc_mode;
+  $('bat-reserve').textContent = pct(bt.min_soc);
+  $('bat-charge').textContent = bt.grid_charge_w ? kw(bt.grid_charge_w) : '—';
+  $('bat-thresh').textContent = kw(threshold);
+  $('socfill').style.width = Math.max(0, Math.min(100, s.battery_soc)) + '%';
+  $('socfill').style.background = MODE_COLOR[bt.mode] || 'var(--calm)';
+  $('socmark').style.left = 'calc(' + bt.min_soc + '% - 1px)';
+  $('soc-label').textContent = pct(s.battery_soc);
+
+  // charging
+  const evName = { verhogen:'Stroom verhogen', verlagen:'Stroom verlagen',
+                   normaal:'Stabiel', idle:'Geen sessie', breach_floored:'Onder drempel' };
+  $('ev-status').textContent = evName[ev.status] || ev.status;
+  $('ev-dot').style.background = ev.breach ? 'var(--peak)'
+      : ev.status === 'idle' ? 'var(--dim)'
+      : ev.status === 'normaal' ? 'var(--calm)' : 'var(--warn)';
+  $('ev-reason').textContent = ev.reason;
+  $('ev-setpoint').textContent = s.max_current_a + ' A';
+  $('ev-recommended').textContent = ev.recommended_a + ' A';
+  $('ev-power').textContent = kw(s.charger_w);
+  $('ev-budget').textContent = kw(ev.budget_w);
+
+  // month
+  $('peak-value').textContent = (s.month_peak_w/1000).toFixed(2) + ' kW';
+  const billed = s.month_peak_w/1000 < 2.5;
+  $('peak-dot').style.background = billed ? 'var(--calm)' : 'var(--warn)';
+  $('peak-reason').textContent = billed
+    ? 'Onder de wettelijke bodem van 2,5 kW — je betaalt het minimum.'
+    : 'Hoogste kwartier tot nu toe deze maand. Dit is je factuurbasis.';
+  $('q-used').textContent = q.consumed_wh.toFixed(0) + ' Wh';
+  $('q-budget').textContent = q.budget_wh.toFixed(0) + ' Wh';
+  $('pv').textContent = kw(s.pv_w);
+  $('home').textContent = kw(s.home_w);
+
+  // errors
+  $('errors').innerHTML = (d.errors || []).slice(-3).map(e =>
+    '<div class="err">' + new Date(e.ts*1000).toLocaleTimeString('nl-BE') + ' — ' +
+    e.message.replace(/[<>]/g,'') + '</div>').join('');
+
+  $('foot').textContent = 'Laatste meting ' +
+    new Date(s.ts*1000).toLocaleTimeString('nl-BE') +
+    ' · interval ' + d.config.interval_s + ' s · evcc ' + d.config.evcc_url;
+
+  draw(s, threshold);
+}
+
+function draw(s, threshold) {
+  const c = $('chart'), dpr = window.devicePixelRatio || 1;
+  const w = c.clientWidth, h = c.clientHeight;
+  c.width = w*dpr; c.height = h*dpr;
+  const x = c.getContext('2d'); x.scale(dpr,dpr); x.clearRect(0,0,w,h);
+
+  const pad = {l:44, r:8, t:12, b:20};
+  const iw = w-pad.l-pad.r, ih = h-pad.t-pad.b;
+  const maxW = Math.max(threshold*1.35, s.projected_w*1.2, s.grid_w*1.2, 3000);
+  const Y = v => pad.t + ih - (Math.max(0,v)/maxW)*ih;
+  const X = t => pad.l + (t/900)*iw;   // t = seconds into the quarter
+
+  // horizontal grid + labels
+  x.font = '11px ui-monospace, monospace'; x.textAlign = 'right';
+  for (let i=0;i<=3;i++) {
+    const v = maxW*i/3, y = Y(v);
+    x.strokeStyle = '#20242e'; x.beginPath(); x.moveTo(pad.l,y); x.lineTo(w-pad.r,y); x.stroke();
+    x.fillStyle = '#5c6376'; x.fillText((v/1000).toFixed(1), pad.l-8, y+4);
+  }
+
+  const el = Math.max(0, Math.min(900, s.quarter.elapsed_s));
+
+  // elapsed: average power actually drawn so far
+  const avgSoFar = el > 0 ? s.quarter.consumed_wh*3600/el : 0;
+  x.fillStyle = '#3d5a72';
+  x.fillRect(pad.l, Y(avgSoFar), X(el)-pad.l, pad.t+ih-Y(avgSoFar));
+
+  // remaining: what the current power would add
+  x.fillStyle = '#2f4557';
+  x.fillRect(X(el), Y(Math.max(0,s.grid_w)), X(900)-X(el), pad.t+ih-Y(Math.max(0,s.grid_w)));
+
+  // budget ceiling for the rest of the window
+  if (s.allowed_w > 0 && el < 900) {
+    x.strokeStyle = 'rgba(221,162,63,.85)'; x.lineWidth = 1.5; x.setLineDash([4,3]);
+    x.beginPath(); x.moveTo(X(el), Y(s.allowed_w)); x.lineTo(X(900), Y(s.allowed_w)); x.stroke();
+    x.setLineDash([]);
+  }
+
+  // the line that costs money
+  x.strokeStyle = '#d4596b'; x.lineWidth = 1.5;
+  x.beginPath(); x.moveTo(pad.l, Y(threshold)); x.lineTo(w-pad.r, Y(threshold)); x.stroke();
+
+  // projected quarter average
+  x.strokeStyle = s.projected_w >= threshold ? '#d4596b' : '#57b39c'; x.lineWidth = 2;
+  x.beginPath(); x.moveTo(pad.l, Y(s.projected_w)); x.lineTo(w-pad.r, Y(s.projected_w)); x.stroke();
+
+  // now marker
+  x.strokeStyle = '#e8eaf0'; x.lineWidth = 1;
+  x.beginPath(); x.moveTo(X(el), pad.t); x.lineTo(X(el), pad.t+ih); x.stroke();
+
+  x.fillStyle = '#5c6376'; x.textAlign = 'left'; x.fillText('kwartierstart', pad.l, h-6);
+  x.textAlign = 'right'; x.fillText('einde', w-pad.r, h-6);
+}
+
+poll();
+setInterval(poll, 5000);
+window.addEventListener('resize', () => { if (last) render(last); });
+</script>
+</body>
+</html>

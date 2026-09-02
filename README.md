@@ -1,99 +1,149 @@
 # evcc-capaciteitstarief-bridge
 
-Home Assistant-regelaar die EV-laden via evcc, twee Indevolt-batterijen en een Huawei-omvormer coördineert om onder de Belgische Fluvius capaciteitstarief-piek (2.5 kW) te blijven — met evcc als actuator en HA als beslissingslaag.
+Peak shaving for the Belgian capacity tariff, built as a companion to
+[evcc](https://evcc.io). It runs in its own LXC, watches the running
+quarter-hour, and steers evcc's charge current and battery mode so your
+monthly peak stays where you want it.
 
-## Wat doet dit project?
+## The problem
 
-`evcc-capaciteitstarief-bridge` houdt de maandelijkse piek onder het Fluvius-drempel van 2.5 kW door realtime het netvermogen (P1-meter), zonneproductie (Huawei SUN2000), batterijcapaciteit (Indevolt Zolder + Garage) en EV-laadstroom (Škoda Enyaq via evcc) op elkaar af te stemmen. Home Assistant fungeert als brein — met een kwartier-feedback-regelaar, freeze-window rond kwartiergrenzen en step-limited aanpassingen — terwijl evcc als enige actuator de laadpaal aanstuurt. Geen directe hardware-writes, geen bypasses: alle beslissingen lopen via evcc.
+Under the Belgian capaciteitstarief your grid fee is driven by the highest
+15-minute *average* import of the month, with a billing floor of 2.5 kW. Home
+batteries in self-consumption mode already shave peaks — right up until they
+are empty, which tends to be exactly when the evening peak arrives, because
+baseload drained them at 22:00 the night before.
 
-## Hardware
+evcc deliberately does not solve this. Its battery controls exist to stop
+discharge during fast charging and to charge on cheap tariffs; using evcc as a
+full battery management system is out of scope, and peak shaving sits in its
+open feature requests. This project fills that gap without replacing evcc and
+without dragging Home Assistant into a control loop that has money attached to
+it — evcc's REST API is the only thing this talks to.
 
-| Component | Detail |
-|---|---|
-| Inverter | Huawei SUN2000 (`sensor.inverter_active_power`, W) |
-| Batterij Zolder | Indevolt, 6 kWh, max 2 kW laden / 1 kW ontladen |
-| Batterij Garage | Indevolt, 4 kWh, max 2 kW laden / 1 kW ontladen |
-| Laadpaal | Eénfasig, oprit, via evcc |
-| Meter | HomeWizard P1 (`sensor.p1_meter_power`, W, positief = afname) |
-| EV | Škoda Enyaq, 230V, 6–32A, fase-switching uit |
-| EV-controller | evcc (≥ v0.311), Indevolts native geconfigureerd (post v0.307.1) |
+## What it does
 
-**Belangrijk:** batterij-vermogensensoren in HA zijn positief bij ontladen — het omgekeerde van de Indevolt-app.
+The insight is that self-consumption *is* peak shaving as long as there is
+charge left. So this controls state of charge, not discharge:
 
-## Kernbeperkingen
+| Mode | When | evcc battery mode |
+|---|---|---|
+| **Reserve** | Normal operation | `hold` below the reserve SoC, `normal` above it |
+| **Precharge** | Lead-up to a peak window, SoC under target | `charge`, capped by the quarter budget |
+| **Release** | Projected quarter average nears the billed peak | `normal` down to the hard floor |
 
-- Belgisch capaciteitstarief-minimum: 2.5 kW piek per maand
-- evcc wordt nooit gebypassed (enige historische uitzondering: v7 netladen-failsafe, inmiddels verwijderd)
-- Batterijen laden permanent enkel op zonne-energie — netladen staat uit
+Charge current and battery precharging are arbitrated by the same quarter-hour
+budget, so precharging can never itself set the peak it was meant to prevent.
 
-## Architectuur in het kort
+## Install
 
-```
-P1-meter (net) ──┐
-Huawei SUN2000 ───┼──► HA-regelaar (capaciteitstarief_v8) ──► select.evcc_oprit_max_current ──► evcc ──► laadpaal
-Indevolt Zolder ──┤         │
-Indevolt Garage ──┘         └──► MQTT batteryMode (optioneel, route B)
-```
-
-Zie [`docs/architecture.md`](docs/architecture.md) voor de volledige feedback-loop, formules en freeze/step-logica.
-
-## Mapstructuur
-
-```
-evcc-capaciteitstarief-bridge/
-├── README.md                          # dit bestand
-├── docs/
-│   ├── architecture.md                # v8-regelaar: formules, freeze window, step rules
-│   ├── v7-vs-v8.md                    # wat v8 oploste t.o.v. v7, en waarom
-│   ├── battery-discharge-decision.md  # open beslissing: Route A vs Route B
-│   ├── entities-reference.md          # tabel van alle HA-entities
-│   └── principles.md                  # kernlessen en ontwerpprincipes
-├── home-assistant/
-│   └── capaciteitstarief_v8.yaml       # placeholder — hier komt de effectieve YAML
-└── captarief-python/
-    └── README.md                       # status van de standalone Python-variant
-```
-
-## Installatie
-
-Dit project bestaat uit twee onderdelen die je apart installeert.
-
-### 1. Home Assistant-regelaar (actief, `capaciteitstarief_v8`)
-
-1. Zorg dat evcc (≥ v0.311) draait en de Indevolt-batterijen native geconfigureerd zijn.
-2. Zorg dat de HA-entities uit [`docs/entities-reference.md`](docs/entities-reference.md) bestaan (P1-meter, omvormer, batterijen, `select.evcc_oprit_max_current`).
-3. Kopieer `home-assistant/capaciteitstarief_v8.yaml` naar de `packages/`-map van je Home Assistant-configuratie (of include hem vanuit `configuration.yaml`).
-4. Herlaad de HA-configuratie (of herstart HA) en controleer in Instellingen → Apparaten & services dat de nieuwe automatiseringen/helpers zijn geladen.
-5. Lees [`docs/architecture.md`](docs/architecture.md) voor de freeze-window- en stapgrenzen-logica voordat je parameters aanpast.
-
-### 2. `captarief-python` / capbudget (experimenteel, nog niet gevalideerd)
-
-Standalone Python-variant bedoeld voor een Debian 13 LXC. Zie [`captarief-python/README.md`](captarief-python/README.md) voor de volledige uitleg; in het kort:
+On the Proxmox host:
 
 ```bash
-# op de LXC
-adduser --system --group --home /opt/capbudget capbudget
-install -d -o capbudget -g capbudget /var/lib/capbudget
-cp -r captarief-python/* /opt/capbudget/
-pip install -r /opt/capbudget/requirements.txt
-
-cp captarief-python/systemd/capbudget.env.example /etc/capbudget.env
-chmod 600 /etc/capbudget.env      # bevat het HA-token
-cp captarief-python/systemd/*.service /etc/systemd/system/
-systemctl enable --now capbudget-logger
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/jeffreyvm/evcc-capaciteitstarief-bridge/main/ct/capaciteit.sh)"
 ```
 
-Start alleen de `capbudget-logger`-service; de `capbudget-daemon` (die daadwerkelijk stuurt) pas inschakelen nadat de uitrolstappen in [`captarief-python/README.md`](captarief-python/README.md#uitrolvolgorde) doorlopen zijn. Draai **nooit** de v8 HA-regelaar en de capbudget-daemon tegelijk — beide schrijven naar hetzelfde actuatiepad.
+Creates an unprivileged Debian 12 LXC (1 core, 512 MB, 4 GB), installs the
+service, and starts it in dry-run mode. Read the script first — that advice
+applies to anything you pipe into a shell, including this. It's standalone —
+it doesn't source `build.func` from the community-scripts repo, so nothing
+outside this repo can change what runs on your hypervisor.
 
-Tests draaien (geen externe afhankelijkheden):
+Then point it at evcc and restart:
 
 ```bash
-cd captarief-python
-python3 -m unittest discover -s tests
+pct exec <ctid> -- nano /etc/capaciteit/capaciteit.env   # EVCC_URL, EVCC_API_KEY
+pct exec <ctid> -- systemctl restart capaciteit
 ```
 
-## Status
+The dashboard is on port 8099.
 
-- **Actief:** Capaciteitstarief v8 (Home Assistant), regelt op basis van net-feedback i.p.v. schatting
-- **Open:** keuze tussen Route A (evcc `batteryDischargeControl: false`) en Route B (MQTT `batteryMode` keepalive) voor batterij-ondersteuning bij EV-laden
-- **Ontworpen, niet gevalideerd:** standalone `captarief` Python-project (Debian 13 LXC, dashboard poort 8770 — nu aanwezig in `captarief-python/web.py`)
+**Existing container or VM?** Skip the helper script:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jeffreyvm/evcc-capaciteitstarief-bridge/main/deploy/install.sh | bash
+```
+
+Re-running either upgrades in place and leaves your config alone — the
+installer is idempotent and never touches an existing env file.
+
+## Configuration
+
+Everything lives in `/etc/capaciteit/capaciteit.env`; see
+[`deploy/capaciteit.env.example`](deploy/capaciteit.env.example) for the
+annotated list. The settings that matter most:
+
+- `DRY_RUN` — starts `true`. Decisions are computed and shown, nothing is sent.
+- `TARGET_PEAK_KW` — `0` learns the month peak from measurements. Set a value
+  to aim lower than your actual peak, or while you have no history yet.
+- `RESERVE_SOC` / `TARGET_SOC` / `HARD_FLOOR_SOC` — the SoC policy.
+- `PEAK_WINDOWS` — when a peak is likely, e.g. `07:00-09:00,17:00-21:00`.
+- `BATTERY_CONTROL` — set `false` to steer only the charger.
+
+## Rolling it out
+
+1. Leave `DRY_RUN=true` and watch the dashboard for a few days. Check the
+   decisions it reports match what you would have done.
+2. Set `DRY_RUN=false`. If you were running the old Home Assistant automation
+   that pushed max current to evcc, disable it now — this service owns that
+   setpoint.
+3. Watch the month peak. It should stop climbing.
+
+Failing is safe by construction: battery actuation goes through evcc's
+`POST /api/batterymode/{normal|hold|charge}`, which is watchdog-guarded on
+evcc's side — the control loop re-asserts every 15 s, and a dead container
+just lets evcc resume its own logic. On a clean shutdown the controller hands
+control back explicitly via `DELETE /api/batterymode`.
+
+## Architecture
+
+```
+capaciteit/
+  peak.py      quarter-hour integral, month peak, billing floor   (pure)
+  logic.py     charge current decisions                           (pure)
+  battery.py   reserve / precharge / release                      (pure)
+  evcc.py      the only module that speaks HTTP to evcc
+  loop.py      sequences the above and owns side effects
+  store.py     one hour of history for the dashboard
+  web.py       read-only dashboard and JSON API
+```
+
+evcc's REST API is the only thing the LXC talks to. `peak.py` now does the
+quarter-hour integral and month-peak tracking itself from evcc's grid power —
+that used to be Home Assistant's job via template sensors, and was the last
+thing keeping HA in the control path.
+
+The three pure modules hold every number that matters and import nothing but
+the standard library, which is why the test suite runs in a second without a
+container, an evcc, or a network. Two tests are named after phone screenshots:
+they reproduce false positives from the original Home Assistant
+implementation — a breach warning that fired while the meter was exporting,
+and a "current lowered" action that lowered 10 A to 10 A. Both came from the
+window budget legitimately collapsing near the end of a quarter, and both are
+fixed by the breach floor: below the billed minimum, nothing that happens can
+cost money.
+
+The dashboard makes the 15-minute window the hero rather than a generic
+gauge: elapsed consumption as a solid block, the projection as its faded
+continuation to the window edge, your billed month peak as the line it must
+not cross, and the remaining budget as a dashed ceiling. It's read-only by
+design — everything that changes behaviour is in the env file, so nothing in
+the UI can bypass `DRY_RUN`, and exposing port 8099 on your LAN carries no
+extra risk.
+
+```bash
+pip install -e '.[test]' && pytest -q
+```
+
+## Where it fits
+
+evcc keeps doing what it is good at: chargers, vehicles, tariffs, solar
+surplus, and a UI worth looking at. This adds the one thing it does not model
+— the Belgian capacity tariff — and talks to evcc through its documented REST
+API rather than reaching into your inverters. If you would rather have one
+system do everything, [OpenEMS](https://github.com/OpenEMS/openems) is the
+serious open-source option and has real peak-shaving controllers, but it is a
+much heavier stack and you will be writing device drivers.
+
+## Licence
+
+MIT.
