@@ -16,7 +16,6 @@ REPO_URL="${REPO_URL:-https://github.com/jeffreyvm/evcc-capaciteitstarief-bridge
 RAW_URL="${RAW_URL:-https://raw.githubusercontent.com/jeffreyvm/evcc-capaciteitstarief-bridge/main}"
 REF="${REF:-main}"
 
-APP="capaciteit"
 DEFAULT_HOSTNAME="capaciteit"
 DEFAULT_CORES=1
 DEFAULT_RAM=512
